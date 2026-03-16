@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Post a Problem — Solvr</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Navigation bar -->
+  <nav>
+    <span class="logo">Solvr</span>
+    <div class="nav-links">
+      <a href="index.html">Browse</a>
+      <a href="submit.html">Post a Problem</a>
+    </div>
+    <button class="btn-primary" onclick="window.location.href='index.html'">
+      Browse Problems
+    </button>
+  </nav>
+
+  <!-- Main content -->
+  <div class="container">
+    <div class="form-container">
+
+      <h2 class="form-title">Post a Problem</h2>
+      <p style="font-size:13px; color:#6b7280; margin-bottom:24px;">
+        Describe a real problem you face in daily life. 
+        Developers will see it and build a solution for you.
+      </p>
+
+      <!-- Your name -->
+      <div class="field">
+        <label>Your Name</label>
+        <input type="text" id="poster-name" placeholder="e.g. Rahul Sharma" />
+      </div>
+
+      <!-- Problem title -->
+      <div class="field">
+        <label>Problem Title</label>
+        <input 
+          type="text" 
+          id="title" 
+          placeholder="e.g. My father keeps forgetting to take his medicine" 
+        />
+      </div>
+
+      <!-- Problem description -->
+      <div class="field">
+        <label>Describe your problem</label>
+        <textarea 
+          id="description" 
+          placeholder="Tell us more — when does this happen, who is affected, what have you already tried?"
+        ></textarea>
+      </div>
+
+      <!-- Category dropdown -->
+      <div class="field">
+        <label>Category</label>
+        <select id="category">
+          <option value="">Select a category</option>
+          <option value="Health">Health</option>
+          <option value="Education">Education</option>
+          <option value="Finance">Finance</option>
+          <option value="Transport">Transport</option>
+          <option value="Housing">Housing</option>
+          <option value="Agriculture">Agriculture</option>
+          <option value="Civic">Civic</option>
+          <option value="Utilities">Utilities</option>
+          <option value="Commerce">Commerce</option>
+          <option value="Jobs">Jobs</option>
+          <option value="Sustainability">Sustainability</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      <!-- Optional image upload -->
+      <div class="field">
+        <label>Photo (optional)</label>
+        <input type="file" id="image" accept="image/*" />
+        <p style="font-size:12px; color:#9ca3af; margin-top:4px;">
+          Upload a photo that shows your problem clearly
+        </p>
+      </div>
+
+      <!-- Loading message shown while AI is running -->
+      <div class="loading" id="loading">
+        Analyzing your problem with AI... this takes a few seconds
+      </div>
+
+      <!-- Submit button -->
+      <button class="btn-primary" id="submit-btn" onclick="submitProblem()"
+        style="width:100%; padding:12px; font-size:15px;">
+        Submit Problem
+      </button>
+
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from './supabase.js'
+    import { generateProblemInsights } from './claude.js'
+
+    window.submitProblem = async function() {
+
+      // Step 1 — Read all the form values
+      const posterName = document.getElementById('poster-name').value.trim()
+      const title = document.getElementById('title').value.trim()
+      const description = document.getElementById('description').value.trim()
+      const category = document.getElementById('category').value
+      const imageFile = document.getElementById('image').files[0]
+
+      // Step 2 — Make sure required fields are filled
+      if (!posterName || !title || !description || !category) {
+        alert('Please fill in all required fields.')
+        return
+      }
+
+      // Step 3 — Show loading state and disable button
+      const btn = document.getElementById('submit-btn')
+      const loading = document.getElementById('loading')
+      btn.disabled = true
+      btn.textContent = 'Submitting...'
+      loading.style.display = 'block'
+
+      try {
+
+        // Step 4 — Upload image to Supabase Storage if one was selected
+        let imageUrl = null
+        if (imageFile) {
+          const fileName = `${Date.now()}-${imageFile.name}`
+          const { data: uploadData, error: uploadError } = await supabase
+            .storage
+            .from('problem-images')
+            .upload(fileName, imageFile)
+
+          if (!uploadError) {
+            const { data: urlData } = supabase
+              .storage
+              .from('problem-images')
+              .getPublicUrl(fileName)
+            imageUrl = urlData.publicUrl
+          }
+        }
+
+        // Step 5 — Call Claude API to get tags and builder brief
+        const insights = await generateProblemInsights(title, description)
+
+        // Step 6 — Save everything to Supabase
+        const { error } = await supabase
+          .from('problems')
+          .insert({
+            title: title,
+            description: description,
+            category: category,
+            image_url: imageUrl,
+            poster_name: posterName,
+            domain: insights.domain,
+            difficulty: insights.difficulty,
+            ai_tags: insights.tags.join(', '),
+            builder_brief: insights.builder_brief,
+            status: 'open',
+            challenge_count: 0,
+            prototype_count: 0
+          })
+
+        if (error) {
+          alert('Something went wrong saving your problem. Please try again.')
+          return
+        }
+
+        // Step 7 — Success, go back to homepage
+        alert('Your problem has been posted! Builders can now see it.')
+        window.location.href = 'index.html'
+
+      } catch (err) {
+        alert('Error: ' + err.message)
+        console.error(err)
+      } finally {
+        // Always reset the button and hide loading whether it worked or not
+        btn.disabled = false
+        btn.textContent = 'Submit Problem'
+        loading.style.display = 'none'
+      }
+
+    }
+
+  </script>
+
+</body>
+</html>

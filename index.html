@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solvr — Real Problems, Real Builders</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Navigation bar -->
+  <nav>
+    <span class="logo">Solvr</span>
+    <div class="nav-links">
+      <a href="index.html">Browse</a>
+      <a href="submit.html">Post a Problem</a>
+    </div>
+    <button class="btn-primary" onclick="window.location.href='submit.html'">
+      Post a Problem
+    </button>
+  </nav>
+
+  <!-- Main content -->
+  <div class="container">
+
+    <!-- Page heading -->
+    <h2 style="font-size:24px; font-weight:700; margin-bottom:8px;">
+      Real problems. Real builders.
+    </h2>
+    <p style="color:#6b7280; font-size:14px; margin-bottom:24px;">
+      Browse problems posted by real people. Accept a challenge and build a solution.
+    </p>
+
+    <!-- Filter chips -->
+    <div class="filters" id="filters">
+      <span class="chip active" onclick="filterCards(this, 'all')">All</span>
+      <span class="chip" onclick="filterCards(this, 'Health')">Health</span>
+      <span class="chip" onclick="filterCards(this, 'Education')">Education</span>
+      <span class="chip" onclick="filterCards(this, 'Finance')">Finance</span>
+      <span class="chip" onclick="filterCards(this, 'Transport')">Transport</span>
+      <span class="chip" onclick="filterCards(this, 'Housing')">Housing</span>
+      <span class="chip" onclick="filterCards(this, 'Agriculture')">Agriculture</span>
+      <span class="chip" onclick="filterCards(this, 'Civic')">Civic</span>
+      <span class="chip" onclick="filterCards(this, 'Other')">Other</span>
+    </div>
+
+    <!-- Cards will be injected here by JavaScript -->
+    <div class="cards-grid" id="cards-grid">
+      <p class="empty">Loading problems...</p>
+    </div>
+
+  </div>
+
+  <script type="module">
+    // Import our Supabase connection
+    import { supabase } from './supabase.js'
+
+    // Store all problems so we can filter without refetching
+    let allProblems = []
+
+    // Run this as soon as the page loads
+    loadProblems()
+
+    // Fetch all problems from Supabase
+    async function loadProblems() {
+      const { data, error } = await supabase
+        .from('problems')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        document.getElementById('cards-grid').innerHTML =
+          '<p class="empty">Could not load problems. Please try again.</p>'
+        return
+      }
+
+      allProblems = data
+      renderCards(allProblems)
+    }
+
+    // Turn the problems array into HTML cards on the page
+    function renderCards(problems) {
+      const grid = document.getElementById('cards-grid')
+
+      if (problems.length === 0) {
+        grid.innerHTML = '<p class="empty">No problems found. Be the first to post one.</p>'
+        return
+      }
+
+      grid.innerHTML = problems.map(problem => `
+        <div class="card" onclick="goToDetail('${problem.id}')">
+
+          <div class="card-header">
+            <p class="card-title">${problem.title}</p>
+            <div class="badges">
+              <span class="badge badge-${problem.status}">${problem.status}</span>
+              <span class="badge badge-${problem.difficulty}">${problem.difficulty}</span>
+            </div>
+          </div>
+
+          <p class="card-desc">${problem.description.substring(0, 120)}...</p>
+
+          <div class="tags">
+            <span class="badge badge-domain">${problem.domain}</span>
+            ${problem.ai_tags
+              ? problem.ai_tags.split(',').map(tag =>
+                  `<span class="badge badge-tag">${tag.trim()}</span>`
+                ).join('')
+              : ''
+            }
+          </div>
+
+          <div class="card-footer">
+            <span class="challenge-count">
+              ${problem.challenge_count} builders accepted
+            </span>
+            <button
+              class="btn-accept ${isAccepted(problem.id) ? 'accepted' : ''}"
+              onclick="acceptChallenge(event, '${problem.id}', this)">
+              ${isAccepted(problem.id) ? 'Accepted' : 'Accept Challenge'}
+            </button>
+          </div>
+
+        </div>
+      `).join('')
+    }
+
+    // Filter cards when a chip is clicked
+    window.filterCards = function(chip, domain) {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'))
+      chip.classList.add('active')
+
+      if (domain === 'all') {
+        renderCards(allProblems)
+      } else {
+        const filtered = allProblems.filter(p => p.category === domain)
+        renderCards(filtered)
+      }
+    }
+
+    // Go to the detail page for a problem
+    window.goToDetail = function(id) {
+      window.location.href = `problem.html?id=${id}`
+    }
+
+    // Accept a challenge — saves to localStorage and updates Supabase
+    window.acceptChallenge = async function(event, id, button) {
+      event.stopPropagation()
+
+      if (isAccepted(id)) return
+
+      // Save accepted state in browser so it persists on refresh
+      const accepted = JSON.parse(localStorage.getItem('accepted') || '[]')
+      accepted.push(id)
+      localStorage.setItem('accepted', JSON.stringify(accepted))
+
+      // Update button immediately so user sees feedback
+      button.textContent = 'Accepted'
+      button.classList.add('accepted')
+
+      // Increment challenge_count in Supabase
+      const problem = allProblems.find(p => p.id === id)
+      await supabase
+        .from('problems')
+        .update({ challenge_count: problem.challenge_count + 1 })
+        .eq('id', id)
+    }
+
+    // Check if this builder already accepted this challenge
+    function isAccepted(id) {
+      const accepted = JSON.parse(localStorage.getItem('accepted') || '[]')
+      return accepted.includes(id)
+    }
+
+  </script>
+
+</body>
+</html>

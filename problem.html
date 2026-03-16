@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Problem — Solvr</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <nav>
+    <span class="logo">Solvr</span>
+    <div class="nav-links">
+      <a href="index.html">Browse</a>
+      <a href="submit.html">Post a Problem</a>
+    </div>
+    <button class="btn-primary" onclick="window.location.href='index.html'">
+      Browse Problems
+    </button>
+  </nav>
+
+  <div class="container">
+    <p style="margin-bottom:20px">
+      <a href="index.html" 
+        style="font-size:13px; color:#6b7280; text-decoration:none">
+        ← Back to feed
+      </a>
+    </p>
+
+    <!-- Problem detail loads here -->
+    <div id="problem-detail">
+      <p class="empty">Loading...</p>
+    </div>
+
+    <!-- Prototypes section -->
+    <div id="prototypes-section" style="display:none">
+      <p class="section-heading">Submitted prototypes</p>
+      <div id="prototypes-list"></div>
+
+      <p class="section-heading">Submit your prototype</p>
+      <div class="form-container" style="padding:20px">
+        <div class="field">
+          <label>Your Name</label>
+          <input type="text" id="builder-name" placeholder="e.g. Ansh Dev" />
+        </div>
+        <div class="field">
+          <label>Live URL</label>
+          <input type="text" id="live-url" placeholder="https://your-demo.vercel.app" />
+        </div>
+        <div class="field">
+          <label>What did you build?</label>
+          <textarea id="proto-description" 
+            placeholder="Brief description of your solution...">
+          </textarea>
+        </div>
+        <div class="field">
+          <label>Demo Video URL (optional)</label>
+          <input type="text" id="video-url" 
+            placeholder="https://youtube.com/..." />
+        </div>
+        <button class="btn-primary" onclick="submitPrototype()"
+          style="width:100%; padding:12px; font-size:15px">
+          Submit Prototype
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from './supabase.js'
+
+    // Get problem ID from URL
+    const params = new URLSearchParams(window.location.search)
+    const problemId = params.get('id')
+
+    if (!problemId) {
+      window.location.href = 'index.html'
+    }
+
+    // Load problem and prototypes when page opens
+    loadProblem()
+    loadPrototypes()
+
+    async function loadProblem() {
+      const { data, error } = await supabase
+        .from('problems')
+        .select('*')
+        .eq('id', problemId)
+        .single()
+
+      if (error || !data) {
+        document.getElementById('problem-detail').innerHTML =
+          '<p class="empty">Problem not found.</p>'
+        return
+      }
+
+      // Build the detail HTML
+      document.getElementById('problem-detail').innerHTML = `
+        <div class="problem-header">
+          <div style="display:flex; align-items:flex-start; 
+            justify-content:space-between; gap:12px; margin-bottom:12px">
+            <h1>${data.title}</h1>
+            <div class="badges">
+              <span class="badge badge-${data.status}">${data.status}</span>
+              <span class="badge badge-${data.difficulty}">${data.difficulty}</span>
+            </div>
+          </div>
+          <div class="badges" style="margin-bottom:16px">
+            <span class="badge badge-domain">${data.domain}</span>
+            <span class="badge badge-domain">${data.category}</span>
+            ${data.ai_tags
+              ? data.ai_tags.split(',').map(tag =>
+                  `<span class="badge badge-tag">${tag.trim()}</span>`
+                ).join('')
+              : ''
+            }
+          </div>
+        </div>
+
+        ${data.image_url
+          ? `<img src="${data.image_url}" class="problem-image" />`
+          : ''
+        }
+
+        <p class="problem-body">${data.description}</p>
+
+        <div class="ai-brief">
+          <p class="ai-brief-label">AI Builder Brief</p>
+          <p>${data.builder_brief}</p>
+        </div>
+
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-num">${data.challenge_count}</div>
+            <div class="stat-label">Builders accepted</div>
+          </div>
+          <div class="stat">
+            <div class="stat-num">${data.prototype_count}</div>
+            <div class="stat-label">Prototypes submitted</div>
+          </div>
+          <div class="stat">
+            <div class="stat-num">
+              ${data.status === 'solved' ? '1' : '0'}
+            </div>
+            <div class="stat-label">Marked solved</div>
+          </div>
+        </div>
+
+        <p style="font-size:13px; color:#6b7280; margin-bottom:4px">
+          Posted by ${data.poster_name}
+        </p>
+      `
+
+      // Show prototypes section after problem loads
+      document.getElementById('prototypes-section').style.display = 'block'
+    }
+
+    async function loadPrototypes() {
+      const { data, error } = await supabase
+        .from('prototypes')
+        .select('*')
+        .eq('problem_id', problemId)
+        .order('submitted_at', { ascending: false })
+
+      const list = document.getElementById('prototypes-list')
+
+      if (error || !data || data.length === 0) {
+        list.innerHTML = 
+          '<p class="empty" style="padding:16px">No prototypes yet. Be the first to build one.</p>'
+        return
+      }
+
+      list.innerHTML = data.map(proto => `
+        <div class="prototype-card">
+          <div>
+            <p class="prototype-title">${proto.live_url}</p>
+            <p class="prototype-sub">by ${proto.builder_name}</p>
+            <p class="prototype-sub" style="margin-top:4px">
+              ${proto.description}
+            </p>
+          </div>
+          <button class="btn-solved" 
+            onclick="markSolved('${proto.id}')">
+            Mark as solved
+          </button>
+        </div>
+      `).join('')
+    }
+
+    window.submitPrototype = async function() {
+      const builderName = document.getElementById('builder-name').value.trim()
+      const liveUrl = document.getElementById('live-url').value.trim()
+      const description = document.getElementById('proto-description').value.trim()
+      const videoUrl = document.getElementById('video-url').value.trim()
+
+      if (!builderName || !liveUrl || !description) {
+        alert('Please fill in your name, live URL and description.')
+        return
+      }
+
+      // Save prototype to Supabase
+      const { error } = await supabase
+        .from('prototypes')
+        .insert({
+          problem_id: problemId,
+          builder_name: builderName,
+          live_url: liveUrl,
+          description: description,
+          demo_video_url: videoUrl || null,
+          marked_solved: false
+        })
+
+      if (error) {
+        alert('Something went wrong. Please try again.')
+        return
+      }
+
+      // Increment prototype count on the problem
+      const { data: problem } = await supabase
+        .from('problems')
+        .select('prototype_count')
+        .eq('id', problemId)
+        .single()
+
+      await supabase
+        .from('problems')
+        .update({ prototype_count: problem.prototype_count + 1 })
+        .eq('id', problemId)
+
+      alert('Prototype submitted successfully!')
+      loadPrototypes()
+    }
+
+    window.markSolved = async function(prototypeId) {
+      // Mark prototype as solved
+      await supabase
+        .from('prototypes')
+        .update({ marked_solved: true })
+        .eq('id', prototypeId)
+
+      // Update problem status to solved
+      await supabase
+        .from('problems')
+        .update({ status: 'solved' })
+        .eq('id', problemId)
+
+      alert('Problem marked as solved!')
+      loadProblem()
+      loadPrototypes()
+    }
+
+  </script>
+
+</body>
+</html>
