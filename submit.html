@@ -8,54 +8,49 @@
 </head>
 <body>
 
-  <!-- Navigation bar -->
   <nav>
-    <span class="logo">Solvr</span>
-    <div class="nav-links">
-      <a href="index.html">Browse</a>
-      <a href="submit.html">Post a Problem</a>
+    <a href="index.html" class="logo">Solvr</a>
+  <div class="nav-links">
+  <a href="index.html">Browse</a>
+</div>
+    <div class="nav-right">
+      <button class="btn-primary" onclick="window.location.href='index.html'">
+        Browse Problems
+      </button>
+      <div class="hamburger" onclick="toggleMenu()">
+        <span></span><span></span><span></span>
+      </div>
     </div>
-    <button class="btn-primary" onclick="window.location.href='index.html'">
-      Browse Problems
-    </button>
   </nav>
 
-  <!-- Main content -->
+  <div class="nav-drawer" id="nav-drawer">
+    <a href="index.html">Browse Problems</a>
+    <a href="submit.html">Post a Problem</a>
+  </div>
+
   <div class="container">
+    <div class="page-header">
+      <h1>Post a Problem</h1>
+      <p>Describe a real problem you face. Innovators and developers will see it and build a solution that could change lives.</p>
+    </div>
+
     <div class="form-container">
 
-      <h2 class="form-title">Post a Problem</h2>
-      <p style="font-size:13px; color:#6b7280; margin-bottom:24px;">
-        Describe a real problem you face in daily life. 
-        Developers will see it and build a solution for you.
-      </p>
-
-      <!-- Your name -->
       <div class="field">
         <label>Your Name</label>
         <input type="text" id="poster-name" placeholder="e.g. Rahul Sharma" />
       </div>
 
-      <!-- Problem title -->
       <div class="field">
         <label>Problem Title</label>
-        <input 
-          type="text" 
-          id="title" 
-          placeholder="e.g. My father keeps forgetting to take his medicine" 
-        />
+        <input type="text" id="title" placeholder="e.g. My father keeps forgetting to take his medicine" />
       </div>
 
-      <!-- Problem description -->
       <div class="field">
         <label>Describe your problem</label>
-        <textarea 
-          id="description" 
-          placeholder="Tell us more — when does this happen, who is affected, what have you already tried?"
-        ></textarea>
+        <textarea id="description" placeholder="Tell us more — when does this happen, who is affected, what have you already tried?"></textarea>
       </div>
 
-      <!-- Category dropdown -->
       <div class="field">
         <label>Category</label>
         <select id="category">
@@ -75,23 +70,30 @@
         </select>
       </div>
 
-      <!-- Optional image upload -->
       <div class="field">
         <label>Photo (optional)</label>
         <input type="file" id="image" accept="image/*" />
-        <p style="font-size:12px; color:#9ca3af; margin-top:4px;">
-          Upload a photo that shows your problem clearly
-        </p>
+        <p class="field-hint">Upload a photo that shows your problem clearly</p>
       </div>
 
-      <!-- Loading message shown while AI is running -->
+      <!-- SOL Reward field -->
+      <div class="reward-field">
+        <label>◎ Add a SOL Reward (optional)</label>
+        <div class="reward-input-wrap">
+          <input type="number" id="reward-sol" min="0" step="0.1" placeholder="0.5" />
+          <span class="sol-label">SOL</span>
+          <span class="solana-badge">Powered by Solana</span>
+        </div>
+        <p class="reward-hint">This reward will be sent to the developer who solves your problem</p>
+      </div>
+
       <div class="loading" id="loading">
-        Analyzing your problem with AI... this takes a few seconds
+        <div class="spinner"></div>
+        Analyzing your problem with AI...
       </div>
 
-      <!-- Submit button -->
       <button class="btn-primary" id="submit-btn" onclick="submitProblem()"
-        style="width:100%; padding:12px; font-size:15px;">
+        style="width:100%; padding:13px; font-size:15px; border-radius:10px;">
         Submit Problem
       </button>
 
@@ -103,90 +105,74 @@
     import { generateProblemInsights } from './claude.js'
 
     window.submitProblem = async function() {
-
-      // Step 1 — Read all the form values
       const posterName = document.getElementById('poster-name').value.trim()
       const title = document.getElementById('title').value.trim()
       const description = document.getElementById('description').value.trim()
       const category = document.getElementById('category').value
       const imageFile = document.getElementById('image').files[0]
+      const rewardSol = parseFloat(document.getElementById('reward-sol').value) || 0
 
-      // Step 2 — Make sure required fields are filled
       if (!posterName || !title || !description || !category) {
         alert('Please fill in all required fields.')
         return
       }
 
-      // Step 3 — Show loading state and disable button
       const btn = document.getElementById('submit-btn')
       const loading = document.getElementById('loading')
       btn.disabled = true
       btn.textContent = 'Submitting...'
-      loading.style.display = 'block'
+      loading.classList.add('show')
 
       try {
-
-        // Step 4 — Upload image to Supabase Storage if one was selected
         let imageUrl = null
         if (imageFile) {
           const fileName = `${Date.now()}-${imageFile.name}`
-          const { data: uploadData, error: uploadError } = await supabase
-            .storage
-            .from('problem-images')
-            .upload(fileName, imageFile)
-
+          const { error: uploadError } = await supabase.storage.from('problem-images').upload(fileName, imageFile)
           if (!uploadError) {
-            const { data: urlData } = supabase
-              .storage
-              .from('problem-images')
-              .getPublicUrl(fileName)
+            const { data: urlData } = supabase.storage.from('problem-images').getPublicUrl(fileName)
             imageUrl = urlData.publicUrl
           }
         }
 
-        // Step 5 — Call Claude API to get tags and builder brief
         const insights = await generateProblemInsights(title, description)
 
-        // Step 6 — Save everything to Supabase
-        const { error } = await supabase
-          .from('problems')
-          .insert({
-            title: title,
-            description: description,
-            category: category,
-            image_url: imageUrl,
-            poster_name: posterName,
-            domain: insights.domain,
-            difficulty: insights.difficulty,
-            ai_tags: insights.tags.join(', '),
-            builder_brief: insights.builder_brief,
-            status: 'open',
-            challenge_count: 0,
-            prototype_count: 0
-          })
+        const { error } = await supabase.from('problems').insert({
+          title,
+          description,
+          category,
+          image_url: imageUrl,
+          poster_name: posterName,
+          domain: insights.domain,
+          difficulty: insights.difficulty,
+          ai_tags: insights.tags.join(', '),
+          builder_brief: insights.builder_brief,
+          status: 'open',
+          challenge_count: 0,
+          prototype_count: 0,
+          reward_sol: rewardSol
+        })
 
         if (error) {
           alert('Something went wrong saving your problem. Please try again.')
           return
         }
 
-        // Step 7 — Success, go back to homepage
         alert('Your problem has been posted! Builders can now see it.')
         window.location.href = 'index.html'
 
       } catch (err) {
         alert('Error: ' + err.message)
-        console.error(err)
       } finally {
-        // Always reset the button and hide loading whether it worked or not
         btn.disabled = false
         btn.textContent = 'Submit Problem'
-        loading.style.display = 'none'
+        loading.classList.remove('show')
       }
+    }
 
+    window.toggleMenu = function() {
+      document.getElementById('nav-drawer').classList.toggle('open')
     }
 
   </script>
-
 </body>
 </html>

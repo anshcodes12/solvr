@@ -8,171 +8,220 @@
 </head>
 <body>
 
-  <!-- Navigation bar -->
   <nav>
-    <span class="logo">Solvr</span>
+    <a href="index.html" class="logo">Solvr</a>
     <div class="nav-links">
       <a href="index.html">Browse</a>
-      <a href="submit.html">Post a Problem</a>
     </div>
-    <button class="btn-primary" onclick="window.location.href='submit.html'">
-      Post a Problem
-    </button>
+    <div class="nav-right">
+      <button class="btn-primary" onclick="window.location.href='submit.html'">
+        + Post a Problem
+      </button>
+      <div class="hamburger" onclick="toggleMenu()" id="hamburger">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
   </nav>
 
-  <!-- Main content -->
+  <div class="nav-drawer" id="nav-drawer">
+    <a href="index.html">Browse Problems</a>
+    <a href="submit.html">Post a Problem</a>
+  </div>
+
+  <div class="hero">
+    <h1>Open platform for innovators</h1>
+    <p>Real people post problems. Builders turn them into solutions that matter.</p>
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat-num" id="total-count">—</div>
+        <div class="hero-stat-label">Problems Posted</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num" id="solved-count">—</div>
+        <div class="hero-stat-label">Solved</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num" id="builder-count">—</div>
+        <div class="hero-stat-label">Builders Accepted</div>
+      </div>
+    </div>
+  </div>
+
   <div class="container">
 
-    <!-- Page heading -->
-    <h2 style="font-size:24px; font-weight:700; margin-bottom:8px;">
-      Real problems. Real builders.
-    </h2>
-    <p style="color:#6b7280; font-size:14px; margin-bottom:24px;">
-      Browse problems posted by real people. Accept a challenge and build a solution.
-    </p>
-
-    <!-- Filter chips -->
-    <div class="filters" id="filters">
-      <span class="chip active" onclick="filterCards(this, 'all')">All</span>
-      <span class="chip" onclick="filterCards(this, 'Health')">Health</span>
-      <span class="chip" onclick="filterCards(this, 'Education')">Education</span>
-      <span class="chip" onclick="filterCards(this, 'Finance')">Finance</span>
-      <span class="chip" onclick="filterCards(this, 'Transport')">Transport</span>
-      <span class="chip" onclick="filterCards(this, 'Housing')">Housing</span>
-      <span class="chip" onclick="filterCards(this, 'Agriculture')">Agriculture</span>
-      <span class="chip" onclick="filterCards(this, 'Civic')">Civic</span>
-      <span class="chip" onclick="filterCards(this, 'Other')">Other</span>
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search" placeholder="Search problems by keyword..." oninput="handleSearch()" />
     </div>
 
-    <!-- Cards will be injected here by JavaScript -->
-    <div class="cards-grid" id="cards-grid">
-      <p class="empty">Loading problems...</p>
+    <div class="filters-row">
+      <div class="filters" id="filters">
+        <span class="chip active" onclick="filterCards(this, 'all')">All</span>
+        <span class="chip" onclick="filterCards(this, 'Health')">Health</span>
+        <span class="chip" onclick="filterCards(this, 'Education')">Education</span>
+        <span class="chip" onclick="filterCards(this, 'Finance')">Finance</span>
+        <span class="chip" onclick="filterCards(this, 'Transport')">Transport</span>
+        <span class="chip" onclick="filterCards(this, 'Housing')">Housing</span>
+        <span class="chip" onclick="filterCards(this, 'Agriculture')">Agriculture</span>
+        <span class="chip" onclick="filterCards(this, 'Civic')">Civic</span>
+        <span class="chip" onclick="filterCards(this, 'Other')">Other</span>
+      </div>
+      <select class="sort-select" onchange="handleSort(this.value)">
+        <option value="newest">Newest first</option>
+        <option value="most-accepted">Most accepted</option>
+      </select>
     </div>
+
+    <div class="cards-grid" id="cards-grid"></div>
 
   </div>
 
   <script type="module">
-    // Import our Supabase connection
     import { supabase } from './supabase.js'
 
-    // Store all problems so we can filter without refetching
     let allProblems = []
+    let activeFilter = 'all'
+    let activeSort = 'newest'
+    let searchQuery = ''
 
-    // Run this as soon as the page loads
     loadProblems()
 
-    // Fetch all problems from Supabase
     async function loadProblems() {
+      // Show skeleton while loading
+      document.getElementById('cards-grid').innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:14px">
+          ${Array(3).fill(`
+            <div style="background:white;border:1px solid #e5e7eb;border-radius:14px;padding:20px;animation:pulse 1.5s infinite">
+              <div style="height:16px;background:#f3f4f6;border-radius:8px;width:60%;margin-bottom:12px"></div>
+              <div style="height:12px;background:#f3f4f6;border-radius:8px;width:90%;margin-bottom:8px"></div>
+              <div style="height:12px;background:#f3f4f6;border-radius:8px;width:75%"></div>
+            </div>
+          `).join('')}
+        </div>
+      `
+
       const { data, error } = await supabase
         .from('problems')
         .select('*')
         .order('created_at', { ascending: false })
 
       if (error) {
-        document.getElementById('cards-grid').innerHTML =
-          '<p class="empty">Could not load problems. Please try again.</p>'
+        document.getElementById('cards-grid').innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><p>Could not load problems. Please try again.</p></div>'
         return
       }
 
       allProblems = data
-      renderCards(allProblems)
+      updateStats()
+      renderCards(getFiltered())
     }
 
-    // Turn the problems array into HTML cards on the page
+    function updateStats() {
+      document.getElementById('total-count').textContent = allProblems.length
+      document.getElementById('solved-count').textContent = allProblems.filter(p => p.status === 'solved').length
+      document.getElementById('builder-count').textContent = allProblems.reduce((sum, p) => sum + (p.challenge_count || 0), 0)
+    }
+
+    function getFiltered() {
+      let list = [...allProblems]
+      if (activeFilter !== 'all') list = list.filter(p => p.category === activeFilter)
+      if (searchQuery) list = list.filter(p =>
+        p.title.toLowerCase().includes(searchQuery) ||
+        p.description.toLowerCase().includes(searchQuery) ||
+        (p.ai_tags || '').toLowerCase().includes(searchQuery)
+      )
+      if (activeSort === 'most-accepted') list.sort((a, b) => (b.challenge_count || 0) - (a.challenge_count || 0))
+      return list
+    }
+
     function renderCards(problems) {
       const grid = document.getElementById('cards-grid')
-
       if (problems.length === 0) {
-        grid.innerHTML = '<p class="empty">No problems found. Be the first to post one.</p>'
+        grid.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><p>No problems found. Try a different filter.</p></div>'
         return
       }
 
       grid.innerHTML = problems.map(problem => `
-        <div class="card" onclick="goToDetail('${problem.id}')">
-
+        <div class="card ${problem.status === 'solved' ? 'solved-card' : ''}" onclick="goToDetail('${problem.id}')">
           <div class="card-header">
             <p class="card-title">${problem.title}</p>
             <div class="badges">
               <span class="badge badge-${problem.status}">${problem.status}</span>
-              <span class="badge badge-${problem.difficulty}">${problem.difficulty}</span>
+              <span class="badge badge-${problem.difficulty}">${problem.difficulty || ''}</span>
+              ${problem.reward_sol && problem.reward_sol > 0
+                ? `<span class="badge badge-reward">◎ ${problem.reward_sol} SOL</span>`
+                : ''
+              }
             </div>
           </div>
 
-          <p class="card-desc">${problem.description.substring(0, 120)}...</p>
+          <p class="card-desc">${(problem.description || '').substring(0, 130)}...</p>
 
           <div class="tags">
-            <span class="badge badge-domain">${problem.domain}</span>
-            ${problem.ai_tags
-              ? problem.ai_tags.split(',').map(tag =>
-                  `<span class="badge badge-tag">${tag.trim()}</span>`
-                ).join('')
-              : ''
-            }
+            <span class="badge badge-domain">${problem.domain || ''}</span>
+            ${(problem.ai_tags || '').split(',').filter(t => t.trim()).map(tag =>
+              `<span class="badge badge-tag">${tag.trim()}</span>`
+            ).join('')}
           </div>
 
           <div class="card-footer">
-            <span class="challenge-count">
-              ${problem.challenge_count} builders accepted
-            </span>
+            <div class="card-meta">
+              <span class="challenge-count">👥 ${problem.challenge_count || 0} builders accepted</span>
+              ${problem.reward_sol && problem.reward_sol > 0
+                ? `<span style="font-size:12px;color:#9333ea;font-weight:600;">◎ ${problem.reward_sol} SOL reward</span>`
+                : ''
+              }
+            </div>
             <button
               class="btn-accept ${isAccepted(problem.id) ? 'accepted' : ''}"
               onclick="acceptChallenge(event, '${problem.id}', this)">
-              ${isAccepted(problem.id) ? 'Accepted' : 'Accept Challenge'}
+              ${isAccepted(problem.id) ? '✓ Accepted' : 'Accept Challenge'}
             </button>
           </div>
-
         </div>
       `).join('')
     }
 
-    // Filter cards when a chip is clicked
     window.filterCards = function(chip, domain) {
       document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'))
       chip.classList.add('active')
-
-      if (domain === 'all') {
-        renderCards(allProblems)
-      } else {
-        const filtered = allProblems.filter(p => p.category === domain)
-        renderCards(filtered)
-      }
+      activeFilter = domain
+      renderCards(getFiltered())
     }
 
-    // Go to the detail page for a problem
+    window.handleSearch = function() {
+      searchQuery = document.getElementById('search').value.toLowerCase().trim()
+      renderCards(getFiltered())
+    }
+
+    window.handleSort = function(value) {
+      activeSort = value
+      renderCards(getFiltered())
+    }
+
     window.goToDetail = function(id) {
       window.location.href = `problem.html?id=${id}`
     }
 
-    // Accept a challenge — saves to localStorage and updates Supabase
     window.acceptChallenge = async function(event, id, button) {
       event.stopPropagation()
-
       if (isAccepted(id)) return
-
-      // Save accepted state in browser so it persists on refresh
       const accepted = JSON.parse(localStorage.getItem('accepted') || '[]')
       accepted.push(id)
       localStorage.setItem('accepted', JSON.stringify(accepted))
-
-      // Update button immediately so user sees feedback
-      button.textContent = 'Accepted'
+      button.textContent = '✓ Accepted'
       button.classList.add('accepted')
-
-      // Increment challenge_count in Supabase
       const problem = allProblems.find(p => p.id === id)
-      await supabase
-        .from('problems')
-        .update({ challenge_count: problem.challenge_count + 1 })
-        .eq('id', id)
+      await supabase.from('problems').update({ challenge_count: (problem.challenge_count || 0) + 1 }).eq('id', id)
     }
 
-    // Check if this builder already accepted this challenge
     function isAccepted(id) {
-      const accepted = JSON.parse(localStorage.getItem('accepted') || '[]')
-      return accepted.includes(id)
+      return JSON.parse(localStorage.getItem('accepted') || '[]').includes(id)
+    }
+
+    window.toggleMenu = function() {
+      document.getElementById('nav-drawer').classList.toggle('open')
     }
 
   </script>
-
 </body>
 </html>
