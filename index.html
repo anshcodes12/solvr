@@ -8,16 +8,22 @@
 </head>
 <body>
 
-  <nav>
+  <div class="toast-container" id="toast-container"></div>
+
+  <nav id="navbar">
     <a href="index.html" class="logo">Solvr</a>
-    <div class="nav-links">
+    <div class="nav-center">
       <a href="index.html">Browse</a>
     </div>
     <div class="nav-right">
-      <button class="btn-primary" onclick="window.location.href='submit.html'">
+      <div id="nav-user-pill" style="display:none"></div>
+      <button class="btn-primary" id="nav-post-btn" onclick="handlePostClick()">
         + Post a Problem
       </button>
-      <div class="hamburger" onclick="toggleMenu()" id="hamburger">
+      <button class="btn-secondary" id="nav-auth-btn" onclick="handleAuthClick()" style="display:none">
+        Sign In
+      </button>
+      <div class="hamburger" onclick="toggleMenu()">
         <span></span><span></span><span></span>
       </div>
     </div>
@@ -25,24 +31,30 @@
 
   <div class="nav-drawer" id="nav-drawer">
     <a href="index.html">Browse Problems</a>
-    <a href="submit.html">Post a Problem</a>
+    <a href="submit.html">+ Post a Problem</a>
+    <a href="auth.html" id="drawer-auth-link">Sign In</a>
   </div>
 
   <div class="hero">
-    <h1>Open platform for innovators</h1>
-    <p>Real people post problems. Builders turn them into solutions that matter.</p>
-    <div class="hero-stats">
-      <div class="hero-stat">
-        <div class="hero-stat-num" id="total-count">—</div>
-        <div class="hero-stat-label">Problems Posted</div>
-      </div>
-      <div class="hero-stat">
-        <div class="hero-stat-num" id="solved-count">—</div>
-        <div class="hero-stat-label">Solved</div>
-      </div>
-      <div class="hero-stat">
-        <div class="hero-stat-num" id="builder-count">—</div>
-        <div class="hero-stat-label">Builders Accepted</div>
+    <div class="hero-content">
+      <h1>Open platform for innovators</h1>
+      <p>Real people post daily problems. Builders turn them into solutions that matter.</p>
+      <a href="submit.html" class="hero-cta" onclick="handlePostClick(); return false;">
+        🚀 Post your problem
+      </a>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="hero-stat-num" id="total-count">0</div>
+          <div class="hero-stat-label">Problems Posted</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-num" id="solved-count">0</div>
+          <div class="hero-stat-label">Solved</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-num" id="builder-count">0</div>
+          <div class="hero-stat-label">Builders Accepted</div>
+        </div>
       </div>
     </div>
   </div>
@@ -51,7 +63,7 @@
 
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
-      <input type="text" id="search" placeholder="Search problems by keyword..." oninput="handleSearch()" />
+      <input type="text" id="search" placeholder="Search problems by keyword, category or tag..." oninput="handleSearch()" />
     </div>
 
     <div class="filters-row">
@@ -69,6 +81,7 @@
       <select class="sort-select" onchange="handleSort(this.value)">
         <option value="newest">Newest first</option>
         <option value="most-accepted">Most accepted</option>
+        <option value="reward">Has SOL reward</option>
       </select>
     </div>
 
@@ -79,6 +92,82 @@
   <script type="module">
     import { supabase } from './supabase.js'
 
+    // ── TOAST SYSTEM ──
+    window.showToast = function(message, type = 'info') {
+      const container = document.getElementById('toast-container')
+      const toast = document.createElement('div')
+      toast.className = `toast ${type}`
+      const icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' }
+      toast.innerHTML = `<span>${icons[type] || 'ℹ'}</span><span>${message}</span>`
+      container.appendChild(toast)
+      setTimeout(() => {
+        toast.classList.add('removing')
+        setTimeout(() => toast.remove(), 300)
+      }, 3000)
+    }
+
+    // ── AUTH STATE ──
+    const { data: { session } } = await supabase.auth.getSession()
+
+    const userPill = document.getElementById('nav-user-pill')
+    const postBtn = document.getElementById('nav-post-btn')
+    const authBtn = document.getElementById('nav-auth-btn')
+    const drawerAuthLink = document.getElementById('drawer-auth-link')
+
+    if (session) {
+      const name = session.user.user_metadata?.full_name || session.user.email
+      const initial = name.charAt(0).toUpperCase()
+      const firstName = name.split(' ')[0]
+
+      userPill.style.display = 'flex'
+      userPill.innerHTML = `
+        <div class="user-pill">
+          <div class="user-avatar">${initial}</div>
+          <span class="user-name">${firstName}</span>
+        </div>
+      `
+      authBtn.style.display = 'block'
+      authBtn.textContent = 'Sign Out'
+      drawerAuthLink.textContent = 'Sign Out'
+      drawerAuthLink.onclick = (e) => { e.preventDefault(); handleAuthClick() }
+    } else {
+      authBtn.style.display = 'block'
+      authBtn.textContent = 'Sign In'
+    }
+
+    window.handlePostClick = function() {
+      if (!session) {
+        localStorage.setItem('redirect_after_auth', 'submit.html')
+        window.location.href = 'auth.html'
+      } else {
+        window.location.href = 'submit.html'
+      }
+    }
+
+    window.handleAuthClick = async function() {
+      if (session) {
+        await supabase.auth.signOut()
+        showToast('Signed out successfully', 'success')
+        setTimeout(() => window.location.reload(), 500)
+      } else {
+        window.location.href = 'auth.html'
+      }
+    }
+
+    // ── NAVBAR SCROLL EFFECT ──
+    window.addEventListener('scroll', () => {
+      document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 20)
+    })
+
+    // ── PARALLAX HERO ──
+    window.addEventListener('scroll', () => {
+      const hero = document.querySelector('.hero')
+      if (hero) {
+        hero.style.backgroundPositionY = `${window.scrollY * 0.4}px`
+      }
+    })
+
+    // ── PROBLEMS ──
     let allProblems = []
     let activeFilter = 'all'
     let activeSort = 'newest'
@@ -87,38 +176,60 @@
     loadProblems()
 
     async function loadProblems() {
-      // Show skeleton while loading
       document.getElementById('cards-grid').innerHTML = `
         <div style="display:flex;flex-direction:column;gap:14px">
-          ${Array(3).fill(`
-            <div style="background:white;border:1px solid #e5e7eb;border-radius:14px;padding:20px;animation:pulse 1.5s infinite">
-              <div style="height:16px;background:#f3f4f6;border-radius:8px;width:60%;margin-bottom:12px"></div>
+          ${Array(4).fill(`
+            <div style="background:white;border:1px solid #e5e7eb;border-radius:14px;padding:22px;animation:pulse-bg 1.5s infinite">
+              <div style="height:16px;background:#f3f4f6;border-radius:8px;width:55%;margin-bottom:14px"></div>
               <div style="height:12px;background:#f3f4f6;border-radius:8px;width:90%;margin-bottom:8px"></div>
-              <div style="height:12px;background:#f3f4f6;border-radius:8px;width:75%"></div>
+              <div style="height:12px;background:#f3f4f6;border-radius:8px;width:70%;margin-bottom:16px"></div>
+              <div style="display:flex;gap:8px">
+                <div style="height:22px;background:#f3f4f6;border-radius:20px;width:70px"></div>
+                <div style="height:22px;background:#f3f4f6;border-radius:20px;width:60px"></div>
+              </div>
             </div>
           `).join('')}
         </div>
       `
 
       const { data, error } = await supabase
-        .from('problems')
-        .select('*')
-        .order('created_at', { ascending: false })
+        .from('problems').select('*').order('created_at', { ascending: false })
 
       if (error) {
-        document.getElementById('cards-grid').innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><p>Could not load problems. Please try again.</p></div>'
+        document.getElementById('cards-grid').innerHTML = `
+          <div class="empty">
+            <div class="empty-icon">⚠️</div>
+            <h3>Could not load problems</h3>
+            <p>Please refresh the page and try again.</p>
+          </div>`
         return
       }
 
       allProblems = data
-      updateStats()
+      animateStats()
       renderCards(getFiltered())
     }
 
-    function updateStats() {
-      document.getElementById('total-count').textContent = allProblems.length
-      document.getElementById('solved-count').textContent = allProblems.filter(p => p.status === 'solved').length
-      document.getElementById('builder-count').textContent = allProblems.reduce((sum, p) => sum + (p.challenge_count || 0), 0)
+    // Animate stat numbers counting up
+    function animateStats() {
+      const total = allProblems.length
+      const solved = allProblems.filter(p => p.status === 'solved').length
+      const builders = allProblems.reduce((sum, p) => sum + (p.challenge_count || 0), 0)
+
+      animateCount('total-count', total)
+      animateCount('solved-count', solved)
+      animateCount('builder-count', builders)
+    }
+
+    function animateCount(id, target) {
+      const el = document.getElementById(id)
+      let current = 0
+      const step = Math.ceil(target / 30)
+      const timer = setInterval(() => {
+        current = Math.min(current + step, target)
+        el.textContent = current
+        if (current >= target) clearInterval(timer)
+      }, 40)
     }
 
     function getFiltered() {
@@ -130,31 +241,57 @@
         (p.ai_tags || '').toLowerCase().includes(searchQuery)
       )
       if (activeSort === 'most-accepted') list.sort((a, b) => (b.challenge_count || 0) - (a.challenge_count || 0))
+      if (activeSort === 'reward') list = list.filter(p => p.reward_sol && p.reward_sol > 0)
       return list
+    }
+
+    function timeAgo(dateStr) {
+      const diff = Date.now() - new Date(dateStr)
+      const mins = Math.floor(diff / 60000)
+      const hours = Math.floor(diff / 3600000)
+      const days = Math.floor(diff / 86400000)
+      if (mins < 60) return `${mins}m ago`
+      if (hours < 24) return `${hours}h ago`
+      return `${days}d ago`
     }
 
     function renderCards(problems) {
       const grid = document.getElementById('cards-grid')
+
       if (problems.length === 0) {
-        grid.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><p>No problems found. Try a different filter.</p></div>'
+        grid.innerHTML = `
+          <div class="empty">
+            <div class="empty-icon">🔍</div>
+            <h3>No problems found</h3>
+            <p>Try a different filter or be the first to post one.</p>
+            <button class="btn-primary" onclick="handlePostClick()" style="margin-top:4px">
+              + Post a Problem
+            </button>
+          </div>`
         return
       }
 
-      grid.innerHTML = problems.map(problem => `
-        <div class="card ${problem.status === 'solved' ? 'solved-card' : ''}" onclick="goToDetail('${problem.id}')">
+      grid.innerHTML = problems.map((problem, i) => `
+        <div class="card ${problem.status === 'solved' ? 'solved-card' : ''}"
+          style="animation-delay: ${i * 0.05}s"
+          onclick="goToDetail('${problem.id}')">
+
+          ${problem.reward_sol && problem.reward_sol > 0 ? `
+            <div class="card-reward">
+              <span class="sol-icon">◎</span>
+              <span>${problem.reward_sol} SOL Reward</span>
+            </div>
+          ` : ''}
+
           <div class="card-header">
             <p class="card-title">${problem.title}</p>
             <div class="badges">
               <span class="badge badge-${problem.status}">${problem.status}</span>
               <span class="badge badge-${problem.difficulty}">${problem.difficulty || ''}</span>
-              ${problem.reward_sol && problem.reward_sol > 0
-                ? `<span class="badge badge-reward">◎ ${problem.reward_sol} SOL</span>`
-                : ''
-              }
             </div>
           </div>
 
-          <p class="card-desc">${(problem.description || '').substring(0, 130)}...</p>
+          <p class="card-desc">${(problem.description || '').substring(0, 140)}...</p>
 
           <div class="tags">
             <span class="badge badge-domain">${problem.domain || ''}</span>
@@ -165,11 +302,9 @@
 
           <div class="card-footer">
             <div class="card-meta">
-              <span class="challenge-count">👥 ${problem.challenge_count || 0} builders accepted</span>
-              ${problem.reward_sol && problem.reward_sol > 0
-                ? `<span style="font-size:12px;color:#9333ea;font-weight:600;">◎ ${problem.reward_sol} SOL reward</span>`
-                : ''
-              }
+              <span class="challenge-count">👥 ${problem.challenge_count || 0} builders</span>
+              <span class="card-poster">by ${problem.poster_name || 'Anonymous'}</span>
+              <span class="card-time">${timeAgo(problem.created_at)}</span>
             </div>
             <button
               class="btn-accept ${isAccepted(problem.id) ? 'accepted' : ''}"
@@ -211,7 +346,10 @@
       button.textContent = '✓ Accepted'
       button.classList.add('accepted')
       const problem = allProblems.find(p => p.id === id)
-      await supabase.from('problems').update({ challenge_count: (problem.challenge_count || 0) + 1 }).eq('id', id)
+      await supabase.from('problems')
+        .update({ challenge_count: (problem.challenge_count || 0) + 1 })
+        .eq('id', id)
+      showToast('Challenge accepted! Go build something great.', 'success')
     }
 
     function isAccepted(id) {

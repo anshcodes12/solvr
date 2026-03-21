@@ -8,14 +8,20 @@
 </head>
 <body>
 
-  <nav>
+  <div class="toast-container" id="toast-container"></div>
+
+  <nav id="navbar">
     <a href="index.html" class="logo">Solvr</a>
-   <div class="nav-links">
-  <a href="index.html">Browse</a>
-</div>
+    <div class="nav-center">
+      <a href="index.html">Browse</a>
+    </div>
     <div class="nav-right">
-      <button class="btn-primary" onclick="window.location.href='index.html'">
-        Browse Problems
+      <div id="nav-user-pill" style="display:none"></div>
+      <button class="btn-primary" id="nav-post-btn" onclick="window.location.href='submit.html'">
+        + Post a Problem
+      </button>
+      <button class="btn-secondary" id="nav-auth-btn" onclick="handleAuthClick()" style="display:none">
+        Sign In
       </button>
       <div class="hamburger" onclick="toggleMenu()">
         <span></span><span></span><span></span>
@@ -28,7 +34,6 @@
     <a href="submit.html">Post a Problem</a>
   </div>
 
-  <!-- SOL Transaction Modal -->
   <div class="modal-overlay" id="sol-modal">
     <div class="modal">
       <div class="modal-icon">◎</div>
@@ -42,7 +47,8 @@
         <p>✓ Transaction confirmed!</p>
         <p class="tx-hash" id="tx-hash"></p>
       </div>
-      <button class="btn-primary" id="modal-close-btn" onclick="closeModal()" style="display:none; width:100%; padding:12px; border-radius:8px;">
+      <button class="btn-primary" id="modal-close-btn" onclick="closeModal()"
+        style="display:none; width:100%; padding:12px; border-radius:8px;">
         Done
       </button>
     </div>
@@ -88,6 +94,60 @@
   <script type="module">
     import { supabase } from './supabase.js'
 
+    // ── TOAST ──
+    window.showToast = function(message, type = 'info') {
+      const container = document.getElementById('toast-container')
+      const toast = document.createElement('div')
+      toast.className = `toast ${type}`
+      const icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' }
+      toast.innerHTML = `<span>${icons[type] || 'ℹ'}</span><span>${message}</span>`
+      container.appendChild(toast)
+      setTimeout(() => {
+        toast.classList.add('removing')
+        setTimeout(() => toast.remove(), 300)
+      }, 3000)
+    }
+
+    // ── AUTH STATE IN NAVBAR ──
+    const { data: { session } } = await supabase.auth.getSession()
+    const userPill = document.getElementById('nav-user-pill')
+    const authBtn = document.getElementById('nav-auth-btn')
+
+    if (session) {
+      const name = session.user.user_metadata?.full_name || session.user.email
+      const initial = name.charAt(0).toUpperCase()
+      const firstName = name.split(' ')[0]
+
+      userPill.style.display = 'flex'
+      userPill.innerHTML = `
+        <div class="user-pill">
+          <div class="user-avatar">${initial}</div>
+          <span class="user-name">${firstName}</span>
+        </div>
+      `
+      authBtn.style.display = 'block'
+      authBtn.textContent = 'Sign Out'
+
+      const fullName = session.user.user_metadata?.full_name
+      if (fullName) document.getElementById('builder-name').value = fullName
+    } else {
+      authBtn.style.display = 'block'
+    }
+
+    window.handleAuthClick = async function() {
+      if (session) {
+        await supabase.auth.signOut()
+        window.location.href = 'index.html'
+      } else {
+        window.location.href = 'auth.html'
+      }
+    }
+
+    window.addEventListener('scroll', () => {
+      document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 20)
+    })
+
+    // ── PROBLEM DETAIL ──
     const params = new URLSearchParams(window.location.search)
     const problemId = params.get('id')
     let currentProblem = null
@@ -108,6 +168,7 @@
       }
 
       currentProblem = data
+      const isOwner = session && session.user.id === data.user_id
 
       document.getElementById('problem-detail').innerHTML = `
         <div class="problem-header">
@@ -118,6 +179,7 @@
               <span class="badge badge-${data.difficulty}">${data.difficulty || ''}</span>
             </div>
           </div>
+
           <div class="badges" style="margin-bottom:8px">
             <span class="badge badge-domain">${data.domain || ''}</span>
             <span class="badge badge-domain">${data.category || ''}</span>
@@ -125,12 +187,17 @@
               `<span class="badge badge-tag">${tag.trim()}</span>`
             ).join('')}
           </div>
-          <p style="font-size:13px; color:#9ca3af; margin-top:8px;">Posted by ${data.poster_name}</p>
 
-          <div class="poster-actions">
-            <button class="btn-edit" onclick="editProblem()">✏️ Edit</button>
-            <button class="btn-delete" onclick="deleteProblem()">🗑 Delete</button>
-          </div>
+          <p style="font-size:13px; color:#9ca3af; margin-top:8px;">
+            Posted by <strong>${data.poster_name}</strong>
+          </p>
+
+          ${isOwner ? `
+            <div class="poster-actions">
+              <button class="btn-edit" onclick="editProblem()">✏️ Edit</button>
+              <button class="btn-delete" onclick="deleteProblem()">🗑 Delete</button>
+            </div>
+          ` : ''}
         </div>
 
         ${data.image_url ? `<img src="${data.image_url}" class="problem-image" />` : ''}
@@ -144,17 +211,15 @@
 
         ${data.reward_sol && data.reward_sol > 0 ? `
           <div class="reward-box">
-            <div class="reward-box-left">
+            <div style="display:flex; align-items:center; gap:16px;">
+              <div style="font-size:36px;">◎</div>
               <div>
-                <div style="font-size:12px; color:#b45309; font-weight:600; margin-bottom:2px;">◎ SOL Reward</div>
+                <div style="font-size:12px; color:#b45309; font-weight:600; margin-bottom:2px; text-transform:uppercase; letter-spacing:0.05em;">SOL Reward for Solver</div>
                 <div class="reward-sol-amount">◎ ${data.reward_sol} SOL</div>
-                <div class="reward-inr">≈ ₹${Math.round(data.reward_sol * 6400).toLocaleString()} estimated</div>
+                <div class="reward-inr">≈ ₹${Math.round(data.reward_sol * 6400).toLocaleString()} estimated · Paid on Solana Devnet</div>
               </div>
             </div>
-            <div style="text-align:right;">
-              <div style="font-size:12px; color:#b45309;">Paid to solver on Solana</div>
-              <span class="solana-badge" style="margin-top:6px; display:inline-block;">Powered by Solana</span>
-            </div>
+            <span class="solana-badge">Powered by Solana</span>
           </div>
         ` : ''}
 
@@ -179,14 +244,21 @@
 
     async function loadPrototypes() {
       const { data, error } = await supabase
-        .from('prototypes').select('*').eq('problem_id', problemId).order('submitted_at', { ascending: false })
+        .from('prototypes').select('*').eq('problem_id', problemId)
+        .order('submitted_at', { ascending: false })
 
       const list = document.getElementById('prototypes-list')
 
       if (error || !data || data.length === 0) {
-        list.innerHTML = '<div class="empty" style="padding:24px"><div class="empty-icon">🔨</div><p>No prototypes yet. Be the first to build one.</p></div>'
+        list.innerHTML = `
+          <div class="empty" style="padding:24px">
+            <div class="empty-icon">🔨</div>
+            <p>No prototypes yet. Be the first to build one.</p>
+          </div>`
         return
       }
+
+      const isOwner = session && currentProblem && session.user.id === currentProblem.user_id
 
       list.innerHTML = data.map(proto => `
         <div class="prototype-card ${proto.marked_solved ? 'winner' : ''}">
@@ -194,9 +266,12 @@
             <a href="${proto.live_url}" target="_blank" class="prototype-title">${proto.live_url}</a>
             <p class="prototype-sub">by ${proto.builder_name}</p>
             <p class="prototype-desc">${proto.description}</p>
-            ${proto.marked_solved ? '<span class="winner-badge" style="margin-top:8px; display:inline-block;">👑 Solution accepted</span>' : ''}
+            ${proto.marked_solved
+              ? '<span class="winner-badge" style="margin-top:8px; display:inline-block;">👑 Solution accepted</span>'
+              : ''
+            }
           </div>
-          ${!proto.marked_solved ? `
+          ${isOwner && !proto.marked_solved ? `
             <button class="btn-solved" onclick="markSolved('${proto.id}', '${proto.builder_name}')">
               Mark as solved
             </button>
@@ -212,7 +287,7 @@
       const videoUrl = document.getElementById('video-url').value.trim()
 
       if (!builderName || !liveUrl || !description) {
-        alert('Please fill in your name, live URL and description.')
+        showToast('Please fill in your name, live URL and description.', 'error')
         return
       }
 
@@ -225,23 +300,37 @@
         marked_solved: false
       })
 
-      if (error) { alert('Something went wrong. Please try again.'); return }
+      if (error) { showToast('Something went wrong. Please try again.', 'error'); return }
 
-      const { data: problem } = await supabase.from('problems').select('prototype_count').eq('id', problemId).single()
-      await supabase.from('problems').update({ prototype_count: (problem.prototype_count || 0) + 1 }).eq('id', problemId)
+      const { data: problem } = await supabase
+        .from('problems').select('prototype_count').eq('id', problemId).single()
+      await supabase.from('problems')
+        .update({ prototype_count: (problem.prototype_count || 0) + 1 })
+        .eq('id', problemId)
 
-      alert('Prototype submitted successfully!')
+      showToast('Prototype submitted successfully!', 'success')
       loadPrototypes()
     }
 
     window.markSolved = async function(prototypeId, builderName) {
+      if (!session) {
+        showToast('Please sign in to mark problems as solved.', 'warning')
+        setTimeout(() => window.location.href = 'auth.html', 1500)
+        return
+      }
+
+      if (session.user.id !== currentProblem.user_id) {
+        showToast('Only the problem poster can mark a solution as solved.', 'error')
+        return
+      }
+
       solvedProtoId = prototypeId
 
       if (currentProblem && currentProblem.reward_sol > 0) {
         showSolModal(builderName)
       } else {
         await completeSolve(prototypeId)
-        alert('Problem marked as solved!')
+        showToast('Problem marked as solved! 🎉', 'success')
         loadProblem()
         loadPrototypes()
       }
@@ -275,13 +364,16 @@
         bar.style.width = '100%'
         status.textContent = 'Transaction confirmed!'
 
-        const fakeHash = Array.from({length: 44}, () => 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'[Math.floor(Math.random() * 58)]).join('')
+        const fakeHash = Array.from({length: 44}, () =>
+          'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'[Math.floor(Math.random() * 58)]
+        ).join('')
         hash.textContent = 'TX: ' + fakeHash
 
         success.style.display = 'block'
         closeBtn.style.display = 'block'
 
         await completeSolve(solvedProtoId)
+        showToast('SOL reward sent successfully! 🎉', 'success')
         loadProblem()
         loadPrototypes()
       }, 2400)
@@ -291,41 +383,55 @@
       document.getElementById('sol-modal').classList.remove('show')
     }
 
-    window.editProblem = function() {
+    // Close modal on overlay click
+    document.getElementById('sol-modal').addEventListener('click', function(e) {
+      if (e.target === this) closeModal()
+    })
+
+    window.editProblem = async function() {
+      if (!session || session.user.id !== currentProblem.user_id) {
+        showToast('You can only edit your own problems.', 'error')
+        return
+      }
+
       const newTitle = prompt('Edit problem title:', currentProblem.title)
       if (!newTitle || newTitle.trim() === currentProblem.title) return
-      supabase.from('problems').update({ title: newTitle.trim() }).eq('id', problemId)
-        .then(() => { alert('Problem updated!'); loadProblem() })
+
+      const newDescription = prompt('Edit description:', currentProblem.description)
+      if (newDescription === null) return
+
+      const { error } = await supabase.from('problems').update({
+        title: newTitle.trim(),
+        description: newDescription.trim()
+      }).eq('id', problemId)
+
+      if (error) { showToast('Could not update: ' + error.message, 'error'); return }
+
+      showToast('Problem updated successfully!', 'success')
+      loadProblem()
     }
 
-   window.deleteProblem = async function() {
-  if (!confirm('Are you sure you want to delete this problem? This cannot be undone.')) return
+    window.deleteProblem = async function() {
+      if (!session || session.user.id !== currentProblem.user_id) {
+        showToast('You can only delete your own problems.', 'error')
+        return
+      }
 
-  // First delete all prototypes linked to this problem
-  const { error: protoError } = await supabase
-    .from('prototypes')
-    .delete()
-    .eq('problem_id', problemId)
+      if (!confirm('Are you sure you want to delete this problem? This cannot be undone.')) return
 
-  if (protoError) {
-    alert('Could not delete prototypes: ' + protoError.message)
-    return
-  }
+      const { error: protoError } = await supabase
+        .from('prototypes').delete().eq('problem_id', problemId)
 
-  // Then delete the problem itself
-  const { error } = await supabase
-    .from('problems')
-    .delete()
-    .eq('id', problemId)
+      if (protoError) { showToast('Could not delete: ' + protoError.message, 'error'); return }
 
-  if (error) {
-    alert('Could not delete problem: ' + error.message)
-    return
-  }
+      const { error } = await supabase
+        .from('problems').delete().eq('id', problemId)
 
-  alert('Problem deleted successfully.')
-  window.location.href = 'index.html'
-}
+      if (error) { showToast('Could not delete: ' + error.message, 'error'); return }
+
+      showToast('Problem deleted.', 'success')
+      setTimeout(() => window.location.href = 'index.html', 1000)
+    }
 
     window.toggleMenu = function() {
       document.getElementById('nav-drawer').classList.toggle('open')

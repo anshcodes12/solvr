@@ -8,14 +8,20 @@
 </head>
 <body>
 
-  <nav>
+  <div class="toast-container" id="toast-container"></div>
+
+  <nav id="navbar">
     <a href="index.html" class="logo">Solvr</a>
-  <div class="nav-links">
-  <a href="index.html">Browse</a>
-</div>
+    <div class="nav-center">
+      <a href="index.html">Browse</a>
+    </div>
     <div class="nav-right">
-      <button class="btn-primary" onclick="window.location.href='index.html'">
-        Browse Problems
+      <div id="nav-user-pill" style="display:none"></div>
+      <button class="btn-primary" id="nav-post-btn" onclick="window.location.href='submit.html'">
+        + Post a Problem
+      </button>
+      <button class="btn-secondary" id="nav-auth-btn" onclick="handleAuthClick()" style="display:none">
+        Sign In
       </button>
       <div class="hamburger" onclick="toggleMenu()">
         <span></span><span></span><span></span>
@@ -76,15 +82,16 @@
         <p class="field-hint">Upload a photo that shows your problem clearly</p>
       </div>
 
-      <!-- SOL Reward field -->
       <div class="reward-field">
-        <label>◎ Add a SOL Reward (optional)</label>
+        <div class="reward-field-header">
+          <label>◎ Add a SOL Reward (optional)</label>
+          <span class="solana-badge">Powered by Solana</span>
+        </div>
         <div class="reward-input-wrap">
           <input type="number" id="reward-sol" min="0" step="0.1" placeholder="0.5" />
           <span class="sol-label">SOL</span>
-          <span class="solana-badge">Powered by Solana</span>
         </div>
-        <p class="reward-hint">This reward will be sent to the developer who solves your problem</p>
+        <p class="reward-hint">This amount will be sent to the developer who solves your problem. Even a small reward attracts more builders.</p>
       </div>
 
       <div class="loading" id="loading">
@@ -104,7 +111,71 @@
     import { supabase } from './supabase.js'
     import { generateProblemInsights } from './claude.js'
 
+    // ── TOAST ──
+    window.showToast = function(message, type = 'info') {
+      const container = document.getElementById('toast-container')
+      const toast = document.createElement('div')
+      toast.className = `toast ${type}`
+      const icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' }
+      toast.innerHTML = `<span>${icons[type] || 'ℹ'}</span><span>${message}</span>`
+      container.appendChild(toast)
+      setTimeout(() => {
+        toast.classList.add('removing')
+        setTimeout(() => toast.remove(), 300)
+      }, 3000)
+    }
+
+    // ── AUTH STATE IN NAVBAR ──
+    const { data: { session } } = await supabase.auth.getSession()
+    const userPill = document.getElementById('nav-user-pill')
+    const authBtn = document.getElementById('nav-auth-btn')
+
+    if (session) {
+      const name = session.user.user_metadata?.full_name || session.user.email
+      const initial = name.charAt(0).toUpperCase()
+      const firstName = name.split(' ')[0]
+
+      userPill.style.display = 'flex'
+      userPill.innerHTML = `
+        <div class="user-pill">
+          <div class="user-avatar">${initial}</div>
+          <span class="user-name">${firstName}</span>
+        </div>
+      `
+      authBtn.style.display = 'block'
+      authBtn.textContent = 'Sign Out'
+
+      // Pre-fill name field if logged in
+      const fullName = session.user.user_metadata?.full_name
+      if (fullName) document.getElementById('poster-name').value = fullName
+    } else {
+      authBtn.style.display = 'block'
+    }
+
+    window.handleAuthClick = async function() {
+      if (session) {
+        await supabase.auth.signOut()
+        window.location.href = 'index.html'
+      } else {
+        window.location.href = 'auth.html'
+      }
+    }
+
+    window.addEventListener('scroll', () => {
+      document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 20)
+    })
+
+    // ── SUBMIT PROBLEM ──
     window.submitProblem = async function() {
+
+      // Require login
+      if (!session) {
+        showToast('Please sign in to post a problem.', 'warning')
+        localStorage.setItem('redirect_after_auth', 'submit.html')
+        setTimeout(() => window.location.href = 'auth.html', 1500)
+        return
+      }
+
       const posterName = document.getElementById('poster-name').value.trim()
       const title = document.getElementById('title').value.trim()
       const description = document.getElementById('description').value.trim()
@@ -113,7 +184,7 @@
       const rewardSol = parseFloat(document.getElementById('reward-sol').value) || 0
 
       if (!posterName || !title || !description || !category) {
-        alert('Please fill in all required fields.')
+        showToast('Please fill in all required fields.', 'error')
         return
       }
 
@@ -127,9 +198,11 @@
         let imageUrl = null
         if (imageFile) {
           const fileName = `${Date.now()}-${imageFile.name}`
-          const { error: uploadError } = await supabase.storage.from('problem-images').upload(fileName, imageFile)
+          const { error: uploadError } = await supabase.storage
+            .from('problem-images').upload(fileName, imageFile)
           if (!uploadError) {
-            const { data: urlData } = supabase.storage.from('problem-images').getPublicUrl(fileName)
+            const { data: urlData } = supabase.storage
+              .from('problem-images').getPublicUrl(fileName)
             imageUrl = urlData.publicUrl
           }
         }
@@ -142,6 +215,7 @@
           category,
           image_url: imageUrl,
           poster_name: posterName,
+          user_id: session.user.id,
           domain: insights.domain,
           difficulty: insights.difficulty,
           ai_tags: insights.tags.join(', '),
@@ -153,15 +227,15 @@
         })
 
         if (error) {
-          alert('Something went wrong saving your problem. Please try again.')
+          showToast('Something went wrong. Please try again.', 'error')
           return
         }
 
-        alert('Your problem has been posted! Builders can now see it.')
-        window.location.href = 'index.html'
+        showToast('Problem posted! Builders can now see it.', 'success')
+        setTimeout(() => window.location.href = 'index.html', 1500)
 
       } catch (err) {
-        alert('Error: ' + err.message)
+        showToast('Error: ' + err.message, 'error')
       } finally {
         btn.disabled = false
         btn.textContent = 'Submit Problem'
