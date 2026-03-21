@@ -12,7 +12,6 @@
 
   <nav id="navbar">
     <a href="index.html" class="logo">Solvr</a>
-   
     <div class="nav-right">
       <div id="nav-user-pill" style="display:none"></div>
       <button class="btn-primary" id="nav-post-btn" onclick="handlePostClick()">
@@ -361,5 +360,146 @@
     }
 
   </script>
+
+  <!-- Particles canvas -->
+  <canvas id="particles-canvas" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:0.4"></canvas>
+
+  <!-- Confetti canvas -->
+  <canvas id="confetti-canvas" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9998;display:none"></canvas>
+
+  <script>
+    // ── FLOATING PARTICLES ──
+    const canvas = document.getElementById('particles-canvas')
+    const ctx = canvas.getContext('2d')
+    canvas.width = window.innerWidth
+    canvas.height = window.innerHeight
+
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    })
+
+    const particles = Array.from({ length: 60 }, () => ({
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      r: Math.random() * 2.5 + 0.5,
+      speed: Math.random() * 0.4 + 0.1,
+      opacity: Math.random() * 0.5 + 0.1,
+      drift: (Math.random() - 0.5) * 0.3
+    }))
+
+    function drawParticles() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      particles.forEach(p => {
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(99, 102, 241, ${p.opacity})`
+        ctx.fill()
+        p.y -= p.speed
+        p.x += p.drift
+        if (p.y < -10) {
+          p.y = canvas.height + 10
+          p.x = Math.random() * canvas.width
+        }
+        if (p.x < -10 || p.x > canvas.width + 10) {
+          p.x = Math.random() * canvas.width
+        }
+      })
+      requestAnimationFrame(drawParticles)
+    }
+    drawParticles()
+
+    // ── 3D CARD TILT ──
+    document.addEventListener('mousemove', (e) => {
+      document.querySelectorAll('.card').forEach(card => {
+        const rect = card.getBoundingClientRect()
+        const isOver = e.clientX >= rect.left && e.clientX <= rect.right &&
+                       e.clientY >= rect.top && e.clientY <= rect.bottom
+        if (isOver) {
+          const x = (e.clientX - rect.left) / rect.width - 0.5
+          const y = (e.clientY - rect.top) / rect.height - 0.5
+          card.style.transform = `perspective(800px) rotateY(${x * 8}deg) rotateX(${-y * 8}deg) translateY(-4px)`
+          card.style.boxShadow = `${-x * 12}px ${-y * 12}px 28px rgba(79,70,229,0.15)`
+        } else {
+          card.style.transform = ''
+          card.style.boxShadow = ''
+        }
+      })
+    })
+
+    // ── SOL BADGE SHIMMER ──
+    const shimmerStyle = document.createElement('style')
+    shimmerStyle.textContent = `
+      .card-reward {
+        position: relative;
+        overflow: hidden;
+      }
+      .card-reward::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 60%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+        animation: shimmerMove 2.5s infinite;
+      }
+      @keyframes shimmerMove {
+        0% { left: -100%; }
+        100% { left: 200%; }
+      }
+    `
+    document.head.appendChild(shimmerStyle)
+
+    // ── CONFETTI ──
+    const confettiCanvas = document.getElementById('confetti-canvas')
+    const cctx = confettiCanvas.getContext('2d')
+    let confettiPieces = []
+    let confettiRunning = false
+
+    window.launchConfetti = function() {
+      confettiCanvas.width = window.innerWidth
+      confettiCanvas.height = window.innerHeight
+      confettiCanvas.style.display = 'block'
+      confettiRunning = true
+      const colors = ['#4f46e5','#7c3aed','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899']
+      confettiPieces = Array.from({ length: 150 }, () => ({
+        x: Math.random() * window.innerWidth,
+        y: -10,
+        w: Math.random() * 10 + 4,
+        h: Math.random() * 5 + 3,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        speed: Math.random() * 4 + 2,
+        angle: Math.random() * 360,
+        spin: (Math.random() - 0.5) * 6,
+        drift: (Math.random() - 0.5) * 2
+      }))
+      function animateConfetti() {
+        if (!confettiRunning) return
+        cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height)
+        confettiPieces.forEach(p => {
+          cctx.save()
+          cctx.translate(p.x, p.y)
+          cctx.rotate(p.angle * Math.PI / 180)
+          cctx.fillStyle = p.color
+          cctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h)
+          cctx.restore()
+          p.y += p.speed
+          p.x += p.drift
+          p.angle += p.spin
+        })
+        confettiPieces = confettiPieces.filter(p => p.y < confettiCanvas.height + 20)
+        if (confettiPieces.length > 0) {
+          requestAnimationFrame(animateConfetti)
+        } else {
+          confettiCanvas.style.display = 'none'
+          confettiRunning = false
+        }
+      }
+      animateConfetti()
+      setTimeout(() => { confettiRunning = false }, 4000)
+    }
+  </script>
+
 </body>
 </html>

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Problem — Solvr</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="/solana-web3.js"></script>
 </head>
 <body>
 
@@ -12,7 +13,6 @@
 
   <nav id="navbar">
     <a href="index.html" class="logo">Solvr</a>
-    
     <div class="nav-right">
       <div id="nav-user-pill" style="display:none"></div>
       <button class="btn-primary" id="nav-post-btn" onclick="window.location.href='submit.html'">
@@ -81,6 +81,18 @@
           <label>Demo Video URL (optional)</label>
           <input type="text" id="video-url" placeholder="https://youtube.com/..." />
         </div>
+        <div class="field">
+          <label>Your Solana Wallet (for SOL reward)</label>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+            <button type="button" id="builder-wallet-btn"
+              onclick="connectBuilderWallet()"
+              style="padding:9px 16px; background:#9333ea; color:white; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit;">
+              Connect Phantom
+            </button>
+            <span id="builder-wallet-status" style="font-size:13px; color:#6b7280;">Not connected</span>
+          </div>
+          <p style="font-size:12px; color:#9ca3af;">Connect your wallet to receive SOL rewards when your solution is accepted</p>
+        </div>
         <button class="btn-primary" onclick="submitPrototype()"
           style="width:100%; padding:13px; font-size:15px; border-radius:10px;">
           Submit Prototype
@@ -88,6 +100,8 @@
       </div>
     </div>
   </div>
+
+  <canvas id="confetti-canvas" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9998;display:none"></canvas>
 
   <script type="module">
     import { supabase } from './supabase.js'
@@ -115,7 +129,6 @@
       const name = session.user.user_metadata?.full_name || session.user.email
       const initial = name.charAt(0).toUpperCase()
       const firstName = name.split(' ')[0]
-
       userPill.style.display = 'flex'
       userPill.innerHTML = `
         <div class="user-pill">
@@ -125,7 +138,6 @@
       `
       authBtn.style.display = 'block'
       authBtn.textContent = 'Sign Out'
-
       const fullName = session.user.user_metadata?.full_name
       if (fullName) document.getElementById('builder-name').value = fullName
     } else {
@@ -144,6 +156,41 @@
     window.addEventListener('scroll', () => {
       document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 20)
     })
+
+    // ── SOLANA WALLET ──
+    let builderWalletAddress = null
+
+    // Check if already connected
+    if (window.solana && window.solana.isPhantom && window.solana.isConnected) {
+      builderWalletAddress = window.solana.publicKey?.toString()
+      if (builderWalletAddress) updateBuilderWalletUI(builderWalletAddress)
+    }
+
+    window.connectBuilderWallet = async function() {
+      if (!window.solana || !window.solana.isPhantom) {
+        showToast('Phantom wallet not installed. Get it at phantom.app', 'error')
+        return
+      }
+      try {
+        const response = await window.solana.connect()
+        builderWalletAddress = response.publicKey.toString()
+        updateBuilderWalletUI(builderWalletAddress)
+        showToast('Wallet connected!', 'success')
+      } catch (err) {
+        showToast('Could not connect wallet: ' + err.message, 'error')
+      }
+    }
+
+    function updateBuilderWalletUI(address) {
+      const btn = document.getElementById('builder-wallet-btn')
+      const status = document.getElementById('builder-wallet-status')
+      if (btn) { btn.textContent = '✓ Connected'; btn.style.background = '#16a34a' }
+      if (status) {
+        status.textContent = address.slice(0, 4) + '...' + address.slice(-4)
+        status.style.color = '#16a34a'
+        status.style.fontWeight = '600'
+      }
+    }
 
     // ── PROBLEM DETAIL ──
     const params = new URLSearchParams(window.location.search)
@@ -198,7 +245,12 @@
           ` : ''}
         </div>
 
-        ${data.image_url ? `<img src="${data.image_url}" class="problem-image" />` : ''}
+        ${data.image_url ? `
+          <img src="${data.image_url}"
+            class="problem-image"
+            onerror="this.style.display='none'"
+          />
+        ` : ''}
 
         <div class="problem-body">${data.description}</div>
 
@@ -264,6 +316,10 @@
             <a href="${proto.live_url}" target="_blank" class="prototype-title">${proto.live_url}</a>
             <p class="prototype-sub">by ${proto.builder_name}</p>
             <p class="prototype-desc">${proto.description}</p>
+            ${proto.builder_wallet
+              ? `<p style="font-size:11px;color:#9333ea;margin-top:4px;">◎ ${proto.builder_wallet.slice(0,4)}...${proto.builder_wallet.slice(-4)}</p>`
+              : ''
+            }
             ${proto.marked_solved
               ? '<span class="winner-badge" style="margin-top:8px; display:inline-block;">👑 Solution accepted</span>'
               : ''
@@ -295,7 +351,8 @@
         live_url: liveUrl,
         description,
         demo_video_url: videoUrl || null,
-        marked_solved: false
+        marked_solved: false,
+        builder_wallet: builderWalletAddress || null
       })
 
       if (error) { showToast('Something went wrong. Please try again.', 'error'); return }
@@ -328,6 +385,7 @@
         showSolModal(builderName)
       } else {
         await completeSolve(prototypeId)
+        window.launchConfetti()
         showToast('Problem marked as solved! 🎉', 'success')
         loadProblem()
         loadPrototypes()
@@ -339,7 +397,7 @@
       await supabase.from('problems').update({ status: 'solved' }).eq('id', problemId)
     }
 
-    function showSolModal(builderName) {
+    async function showSolModal(builderName) {
       const modal = document.getElementById('sol-modal')
       const bar = document.getElementById('progress-bar')
       const status = document.getElementById('tx-status')
@@ -351,37 +409,113 @@
         `Sending ◎ ${currentProblem.reward_sol} SOL to ${builderName} on Solana Devnet...`
 
       bar.style.width = '0%'
-      status.textContent = 'Initiating transaction...'
+      status.textContent = 'Connecting to Phantom wallet...'
       success.style.display = 'none'
       closeBtn.style.display = 'none'
       modal.classList.add('show')
 
-      setTimeout(() => { bar.style.width = '40%'; status.textContent = 'Signing transaction...' }, 400)
-      setTimeout(() => { bar.style.width = '75%'; status.textContent = 'Confirming on Solana Devnet...' }, 1200)
-      setTimeout(async () => {
-        bar.style.width = '100%'
-        status.textContent = 'Transaction confirmed!'
+      // Get builder wallet from prototype
+      const { data: proto } = await supabase
+        .from('prototypes')
+        .select('builder_wallet')
+        .eq('id', solvedProtoId)
+        .single()
 
-        const fakeHash = Array.from({length: 44}, () =>
-          'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'[Math.floor(Math.random() * 58)]
-        ).join('')
-        hash.textContent = 'TX: ' + fakeHash
+      if (!proto?.builder_wallet) {
+        // No wallet — simulate
+        status.textContent = 'Builder has no wallet. Simulating transaction...'
+        bar.style.width = '50%'
+        setTimeout(async () => {
+          bar.style.width = '100%'
+          status.textContent = 'Simulated transaction complete'
+          const fakeHash = Array.from({length: 44}, () =>
+            'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'[Math.floor(Math.random() * 58)]
+          ).join('')
+          hash.textContent = 'TX: ' + fakeHash + ' (simulated)'
+          success.style.display = 'block'
+          closeBtn.style.display = 'block'
+          await completeSolve(solvedProtoId)
+          window.launchConfetti()
+          showToast('Problem solved! 🎉', 'success')
+          loadProblem()
+          loadPrototypes()
+        }, 2000)
+        return
+      }
+
+      // Real Solana transaction
+      try {
+        if (!window.solana || !window.solana.isPhantom) {
+          throw new Error('Phantom wallet not found')
+        }
+
+        bar.style.width = '25%'
+        status.textContent = 'Please approve in Phantom wallet...'
+
+        // Connect wallet if not connected
+        if (!window.solana.isConnected) {
+          await window.solana.connect()
+        }
+
+        const solanaWeb3 = window.solanaWeb3
+        const connection = new solanaWeb3.Connection(
+          'https://api.devnet.solana.com', 'confirmed'
+        )
+
+        const fromPubkey = window.solana.publicKey
+        const toPubkey = new solanaWeb3.PublicKey(proto.builder_wallet)
+        const lamports = Math.round(
+          currentProblem.reward_sol * solanaWeb3.LAMPORTS_PER_SOL
+        )
+
+        const transaction = new solanaWeb3.Transaction().add(
+          solanaWeb3.SystemProgram.transfer({ fromPubkey, toPubkey, lamports })
+        )
+
+        const { blockhash } = await connection.getLatestBlockhash()
+        transaction.recentBlockhash = blockhash
+        transaction.feePayer = fromPubkey
+
+        bar.style.width = '50%'
+        status.textContent = 'Waiting for wallet approval...'
+
+        const { signature } = await window.solana.signAndSendTransaction(transaction)
+
+        bar.style.width = '80%'
+        status.textContent = 'Confirming on Solana Devnet...'
+
+        await connection.confirmTransaction(signature, 'confirmed')
+
+        bar.style.width = '100%'
+        status.textContent = 'Transaction confirmed on Solana Devnet!'
+
+        hash.innerHTML = `TX: <a href="https://explorer.solana.com/tx/${signature}?cluster=devnet"
+          target="_blank" style="color:#9333ea; word-break:break-all;">
+          ${signature.slice(0,20)}...${signature.slice(-8)}
+        </a>`
 
         success.style.display = 'block'
         closeBtn.style.display = 'block'
 
         await completeSolve(solvedProtoId)
-        showToast('SOL reward sent successfully! 🎉', 'success')
+        window.launchConfetti()
+        showToast('Real SOL sent on Devnet! 🎉', 'success')
         loadProblem()
         loadPrototypes()
-      }, 2400)
+
+      } catch (err) {
+        bar.style.width = '0%'
+        status.textContent = 'Transaction failed: ' + err.message
+        closeBtn.style.display = 'block'
+        closeBtn.textContent = 'Close'
+        showToast('Transaction failed: ' + err.message, 'error')
+      }
     }
 
     window.closeModal = function() {
       document.getElementById('sol-modal').classList.remove('show')
     }
 
-    // Close modal on overlay click
     document.getElementById('sol-modal').addEventListener('click', function(e) {
       if (e.target === this) closeModal()
     })
@@ -391,20 +525,15 @@
         showToast('You can only edit your own problems.', 'error')
         return
       }
-
       const newTitle = prompt('Edit problem title:', currentProblem.title)
       if (!newTitle || newTitle.trim() === currentProblem.title) return
-
       const newDescription = prompt('Edit description:', currentProblem.description)
       if (newDescription === null) return
-
       const { error } = await supabase.from('problems').update({
         title: newTitle.trim(),
         description: newDescription.trim()
       }).eq('id', problemId)
-
       if (error) { showToast('Could not update: ' + error.message, 'error'); return }
-
       showToast('Problem updated successfully!', 'success')
       loadProblem()
     }
@@ -414,19 +543,13 @@
         showToast('You can only delete your own problems.', 'error')
         return
       }
-
       if (!confirm('Are you sure you want to delete this problem? This cannot be undone.')) return
-
       const { error: protoError } = await supabase
         .from('prototypes').delete().eq('problem_id', problemId)
-
       if (protoError) { showToast('Could not delete: ' + protoError.message, 'error'); return }
-
       const { error } = await supabase
         .from('problems').delete().eq('id', problemId)
-
       if (error) { showToast('Could not delete: ' + error.message, 'error'); return }
-
       showToast('Problem deleted.', 'success')
       setTimeout(() => window.location.href = 'index.html', 1000)
     }
@@ -436,5 +559,57 @@
     }
 
   </script>
+
+  <script>
+    // ── CONFETTI ──
+    const confettiCanvas = document.getElementById('confetti-canvas')
+    const cctx = confettiCanvas.getContext('2d')
+    let confettiPieces = []
+    let confettiRunning = false
+
+    window.launchConfetti = function() {
+      confettiCanvas.width = window.innerWidth
+      confettiCanvas.height = window.innerHeight
+      confettiCanvas.style.display = 'block'
+      confettiRunning = true
+      const colors = ['#4f46e5','#7c3aed','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899']
+      confettiPieces = Array.from({ length: 150 }, () => ({
+        x: Math.random() * window.innerWidth,
+        y: -10,
+        w: Math.random() * 10 + 4,
+        h: Math.random() * 5 + 3,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        speed: Math.random() * 4 + 2,
+        angle: Math.random() * 360,
+        spin: (Math.random() - 0.5) * 6,
+        drift: (Math.random() - 0.5) * 2
+      }))
+      function animateConfetti() {
+        if (!confettiRunning) return
+        cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height)
+        confettiPieces.forEach(p => {
+          cctx.save()
+          cctx.translate(p.x, p.y)
+          cctx.rotate(p.angle * Math.PI / 180)
+          cctx.fillStyle = p.color
+          cctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h)
+          cctx.restore()
+          p.y += p.speed
+          p.x += p.drift
+          p.angle += p.spin
+        })
+        confettiPieces = confettiPieces.filter(p => p.y < confettiCanvas.height + 20)
+        if (confettiPieces.length > 0) {
+          requestAnimationFrame(animateConfetti)
+        } else {
+          confettiCanvas.style.display = 'none'
+          confettiRunning = false
+        }
+      }
+      animateConfetti()
+      setTimeout(() => { confettiRunning = false }, 4000)
+    }
+  </script>
+
 </body>
 </html>

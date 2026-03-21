@@ -57,7 +57,10 @@ app.post("/api/analyze", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
+// Serve solana web3 from node_modules
+app.get("/solana-web3.js", (req, res) => {
+  res.sendFile(require.resolve("@solana/web3.js/lib/index.iife.js"));
+});
 app.listen(3000, () => {
   console.log("Server running at http://localhost:3000");
 });
