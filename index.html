@@ -255,66 +255,59 @@
       return `${days}d ago`
     }
 
-    function renderCards(problems) {
-      const grid = document.getElementById('cards-grid')
+   grid.innerHTML = problems.map((problem, i) => `
+  <div class="card ${problem.status === 'solved' ? 'solved-card' : ''}"
+    style="animation-delay: ${i * 0.05}s"
+    onclick="goToDetail('${problem.id}')">
 
-      if (problems.length === 0) {
-        grid.innerHTML = `
-          <div class="empty">
-            <div class="empty-icon">🔍</div>
-            <h3>No problems found</h3>
-            <p>Try a different filter or be the first to post one.</p>
-            <button class="btn-primary" onclick="handlePostClick()" style="margin-top:4px">
-              + Post a Problem
-            </button>
-          </div>`
-        return
+    ${problem.image_url ? `
+      <img src="${problem.image_url}"
+        style="width:100%;height:180px;object-fit:cover;border-radius:10px;margin-bottom:12px;"
+        onerror="this.style.display='none'"
+      />
+    ` : ''}
+
+    ${problem.reward_sol && problem.reward_sol > 0 ? `
+      <div class="card-reward">
+        <span class="sol-icon">◎</span>
+        <span>${problem.reward_sol} SOL Reward</span>
+      </div>
+    ` : ''}
+
+    <div class="card-header">
+      <p class="card-title">${problem.title}</p>
+      <div class="badges">
+        <span class="badge badge-${problem.status}">${problem.status}</span>
+        <span class="badge badge-${problem.difficulty}">${problem.difficulty || ''}</span>
+      </div>
+    </div>
+
+    <p class="card-desc">${(problem.description || '').substring(0, 140)}...</p>
+
+    <div class="tags">
+      <span class="badge badge-domain">${problem.domain || ''}</span>
+      ${(problem.ai_tags || '').split(',').filter(t => t.trim()).map(tag =>
+        `<span class="badge badge-tag">${tag.trim()}</span>`
+      ).join('')}
+    </div>
+
+    <div class="card-footer">
+      <div class="card-meta">
+        <span class="challenge-count">👥 ${problem.challenge_count || 0} builders</span>
+        <span class="card-poster">by ${problem.poster_name || 'Anonymous'}</span>
+        <span class="card-time">${timeAgo(problem.created_at)}</span>
+      </div>
+      ${session && session.user.id === problem.user_id
+        ? `<span style="font-size:12px;color:var(--faint);font-style:italic;">Your problem</span>`
+        : `<button
+            class="btn-accept ${isAccepted(problem.id) ? 'accepted' : ''}"
+            onclick="acceptChallenge(event, '${problem.id}', this)">
+            ${isAccepted(problem.id) ? '✓ Accepted' : 'Accept Challenge'}
+          </button>`
       }
-
-      grid.innerHTML = problems.map((problem, i) => `
-        <div class="card ${problem.status === 'solved' ? 'solved-card' : ''}"
-          style="animation-delay: ${i * 0.05}s"
-          onclick="goToDetail('${problem.id}')">
-
-          ${problem.reward_sol && problem.reward_sol > 0 ? `
-            <div class="card-reward">
-              <span class="sol-icon">◎</span>
-              <span>${problem.reward_sol} SOL Reward</span>
-            </div>
-          ` : ''}
-
-          <div class="card-header">
-            <p class="card-title">${problem.title}</p>
-            <div class="badges">
-              <span class="badge badge-${problem.status}">${problem.status}</span>
-              <span class="badge badge-${problem.difficulty}">${problem.difficulty || ''}</span>
-            </div>
-          </div>
-
-          <p class="card-desc">${(problem.description || '').substring(0, 140)}...</p>
-
-          <div class="tags">
-            <span class="badge badge-domain">${problem.domain || ''}</span>
-            ${(problem.ai_tags || '').split(',').filter(t => t.trim()).map(tag =>
-              `<span class="badge badge-tag">${tag.trim()}</span>`
-            ).join('')}
-          </div>
-
-          <div class="card-footer">
-            <div class="card-meta">
-              <span class="challenge-count">👥 ${problem.challenge_count || 0} builders</span>
-              <span class="card-poster">by ${problem.poster_name || 'Anonymous'}</span>
-              <span class="card-time">${timeAgo(problem.created_at)}</span>
-            </div>
-            <button
-              class="btn-accept ${isAccepted(problem.id) ? 'accepted' : ''}"
-              onclick="acceptChallenge(event, '${problem.id}', this)">
-              ${isAccepted(problem.id) ? '✓ Accepted' : 'Accept Challenge'}
-            </button>
-          </div>
-        </div>
-      `).join('')
-    }
+    </div>
+  </div>
+`).join('')
 
     window.filterCards = function(chip, domain) {
       document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'))
